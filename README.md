@@ -142,13 +142,3 @@ If your branch is `master` instead of `main`:
 ```bash
 git push -u origin master
 ```
-
-## GitHub repository URL
-
-After pushing, your public repo URL will be:
-
-```text
-https://github.com/<your-username>/<your-repo>
-```
-
-Replace `<your-username>` and `<your-repo>` with your actual GitHub account and repository name.
