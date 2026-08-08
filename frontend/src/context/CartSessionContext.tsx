@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   CartItem,
   ClickstreamEvent,
   Product,
   PredictResponse,
   RecommendResponse,
+  RealtimeSessionPayload,
   SessionMetricsPayload,
   BackendHealthResponse
 } from '../types';
@@ -21,10 +22,12 @@ interface CartSessionContextType {
   cartValue: number;
   totalCartItems: number;
   events: ClickstreamEvent[];
-  logEvent: (eventType: ClickstreamEvent['event_type'], details: string, path?: string) => void;
+  logEvent: (eventType: string, details: string, path?: string, extraData?: Record<string, any>) => void;
   sessionStartTime: number;
   prediction: PredictResponse | null;
   recommendation: RecommendResponse | null;
+  realtimePayload: RealtimeSessionPayload | null;
+  isWsConnected: boolean;
   isAnalyzing: boolean;
   runAIPrediction: () => Promise<RecommendResponse | null>;
   backendStatus: BackendHealthResponse | null;
@@ -34,7 +37,7 @@ interface CartSessionContextType {
 
 const CartSessionContext = createContext<CartSessionContextType | undefined>(undefined);
 
-const generateSessionId = () => `1000_${Math.floor(100 + Math.random() * 900)}`;
+const generateSessionId = () => `S100${Math.floor(100 + Math.random() * 900)}`;
 
 export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sessionId, setSessionId] = useState<string>(() => generateSessionId());
@@ -44,8 +47,12 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
   const [recommendation, setRecommendation] = useState<RecommendResponse | null>(null);
+  const [realtimePayload, setRealtimePayload] = useState<RealtimeSessionPayload | null>(null);
+  const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [backendStatus, setBackendStatus] = useState<BackendHealthResponse | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Health check on mount
   const refreshHealthStatus = useCallback(async () => {
@@ -57,19 +64,110 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     refreshHealthStatus();
   }, [refreshHealthStatus]);
 
+  // Establish Phase 7 Real-Time WebSocket Connection
+  useEffect(() => {
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const wsProtocol = baseUrl.startsWith('https') ? 'wss' : 'ws';
+    const host = baseUrl.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProtocol}://${host}/ws/session/${sessionId}`;
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log(`[WebSocket] Connected to /ws/session/${sessionId}`);
+        setIsWsConnected(true);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload: RealtimeSessionPayload = JSON.parse(event.data);
+          setRealtimePayload(payload);
+
+          // Update recommendation state from WebSocket response
+          if (payload.risk_score !== undefined) {
+            const riskLevel = payload.risk_score >= 0.7 ? 'High' : payload.risk_score >= 0.4 ? 'Medium' : 'Low';
+            setPrediction({
+              session_id: payload.session_id,
+              abandonment_probability: payload.abandonment_probability,
+              purchase_probability: payload.purchase_probability,
+              risk_score: payload.risk_score,
+              risk_level: riskLevel,
+              confidence: payload.confidence || 0.95
+            });
+
+            setRecommendation({
+              session_id: payload.session_id,
+              risk_score: payload.risk_score,
+              purchase_probability: payload.purchase_probability,
+              abandonment_probability: payload.abandonment_probability,
+              confidence: payload.confidence || 0.95,
+              reason: payload.reason,
+              recommended_action: payload.recommended_action,
+              final_action: payload.final_action,
+              discount_cost: payload.discount_cost,
+              expected_incremental_margin: payload.expected_incremental_margin,
+              decision_status: payload.decision_status,
+              experiment_group: payload.experiment_group,
+              top_features: [
+                { feature: 'cart_value', importance: 8.5, description: `Cart Value (₹${payload.cart_value})` },
+                { feature: 'events_count', importance: 2.1, description: `Session Events (${payload.events_count})` }
+              ],
+              timestamp: payload.timestamp
+            });
+          }
+        } catch (e) {
+          console.error('[WebSocket] Message parsing error:', e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.warn('[WebSocket] Connection error, falling back to HTTP:', err);
+        setIsWsConnected(false);
+      };
+
+      ws.onclose = () => {
+        console.log('[WebSocket] Connection closed');
+        setIsWsConnected(false);
+      };
+    } catch (e) {
+      console.warn('[WebSocket] Init failed:', e);
+      setIsWsConnected(false);
+    }
+
+    return () => {
+      if (ws) ws.close();
+    };
+  }, [sessionId]);
+
   // Event logger helper
-  const logEvent = useCallback((eventType: ClickstreamEvent['event_type'], details: string, path?: string) => {
+  const logEvent = useCallback((eventType: string, details: string, path?: string, extraData?: Record<string, any>) => {
+    const nowStr = new Date().toISOString();
     const newEvent: ClickstreamEvent = {
       id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      timestamp: new Date().toISOString(),
+      timestamp: nowStr,
       event_type: eventType,
       details,
       path: path || window.location.pathname
     };
     setEvents((prev) => [...prev, newEvent]);
+
+    // Stream event payload via WebSocket if active
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const wsPayload = {
+        event_type: eventType.toUpperCase(),
+        details,
+        amount: extraData?.amount || 0.0,
+        product_id: extraData?.product_id || null,
+        timestamp: nowStr
+      };
+      wsRef.current.send(JSON.stringify(wsPayload));
+    }
   }, []);
 
-  // Initialize session log
+  // Initialize / Reset session
   const resetSession = useCallback(() => {
     const newId = generateSessionId();
     setSessionId(newId);
@@ -78,13 +176,13 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setSessionStartTime(Date.now());
     setPrediction(null);
     setRecommendation(null);
+    setRealtimePayload(null);
     
-    // Initial page view event
     const now = new Date().toISOString();
     setEvents([{
       id: `evt_${Date.now()}_init`,
       timestamp: now,
-      event_type: 'page_view',
+      event_type: 'PAGE_VIEW',
       details: 'Started new shopping session',
       path: '/'
     }]);
@@ -93,7 +191,7 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Initial event log on load
   useEffect(() => {
     if (events.length === 0) {
-      logEvent('page_view', 'Customer arrived on website', '/');
+      logEvent('PAGE_VIEW', 'Customer arrived on website', '/');
     }
   }, [events.length, logEvent]);
 
@@ -111,14 +209,20 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return [...prev, { product, quantity: 1 }];
     });
 
-    logEvent('add_to_cart', `Added ${product.title} ($${product.price}) to cart`, '/shop');
+    logEvent('ADD_TO_CART', `Added ${product.title} (₹${product.price}) to cart`, '/shop', {
+      amount: product.price,
+      product_id: product.id
+    });
   }, [logEvent]);
 
   const removeFromCart = useCallback((productId: string) => {
     setCart((prev) => {
       const item = prev.find((i) => i.product.id === productId);
       if (item) {
-        logEvent('click', `Removed ${item.product.title} from cart`, '/cart');
+        logEvent('REMOVE_FROM_CART', `Removed ${item.product.title} from cart`, '/cart', {
+          amount: item.product.price * item.quantity,
+          product_id: productId
+        });
       }
       return prev.filter((i) => i.product.id !== productId);
     });
@@ -143,17 +247,17 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const cartValue = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Compute active 15-feature session payload for API
+  // Compute active session payload for HTTP fallback
   const getActiveSessionPayload = useCallback((): SessionMetricsPayload => {
     const durationSec = Math.max(1, Math.floor((Date.now() - sessionStartTime) / 1000));
     const totalEventsCount = Math.max(1, events.length);
     const avgTimeBetween = Number((durationSec / totalEventsCount).toFixed(1));
 
-    const pageViews = events.filter((e) => e.event_type === 'page_view').length;
-    const productViews = events.filter((e) => e.event_type === 'product_view').length;
-    const clicks = events.filter((e) => e.event_type === 'click').length;
-    const addToCartCount = events.filter((e) => e.event_type === 'add_to_cart').length;
-    const checkoutStarted = events.some((e) => e.event_type === 'checkout_started') ? 1 : (cart.length > 0 ? 1 : 0);
+    const pageViews = events.filter((e) => e.event_type.toLowerCase().includes('page')).length;
+    const productViews = events.filter((e) => e.event_type.toLowerCase().includes('product')).length;
+    const clicks = events.filter((e) => e.event_type.toLowerCase().includes('click')).length;
+    const addToCartCount = events.filter((e) => e.event_type.toLowerCase().includes('add_to_cart')).length;
+    const checkoutStarted = events.some((e) => e.event_type.toLowerCase().includes('checkout')) ? 1 : (cart.length > 0 ? 1 : 0);
 
     const uniqueProducts = new Set(cart.map((item) => item.product.id)).size;
 
@@ -180,7 +284,7 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Run AI prediction & recommendation
   const runAIPrediction = useCallback(async (): Promise<RecommendResponse | null> => {
     setIsAnalyzing(true);
-    logEvent('checkout_started', 'Initiated AI Cart Rescue evaluation', '/checkout');
+    logEvent('CHECKOUT_STARTED', 'Initiated AI Cart Rescue evaluation', '/checkout');
     
     const payload = getActiveSessionPayload();
     try {
@@ -217,6 +321,8 @@ export const CartSessionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         sessionStartTime,
         prediction,
         recommendation,
+        realtimePayload,
+        isWsConnected,
         isAnalyzing,
         runAIPrediction,
         backendStatus,

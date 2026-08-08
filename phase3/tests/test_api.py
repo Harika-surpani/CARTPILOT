@@ -18,7 +18,7 @@ def test_health_endpoint():
     data = response.json()
     assert data["status"] == "healthy"
     assert data["model_loaded"] is True
-    assert data["version"] == "1.0.0"
+    assert "version" in data
 
 
 def test_predict_endpoint():

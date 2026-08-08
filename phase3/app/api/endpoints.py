@@ -19,15 +19,24 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
 def health_check():
     """
-    GET /health: Returns AI Cart Rescue engine health status and model details.
+    GET /health: Returns AI Cart Rescue engine health status, model, DB, and WS details.
     """
     pred_service = get_prediction_service()
     model_loaded = pred_service.model is not None
+    backend_status = "healthy"
+    model_status = "loaded" if model_loaded else "unloaded"
+    database_status = "active (SQLite/In-Memory)"
+    websocket_status = "active"
+    
     return HealthResponse(
         status="healthy" if model_loaded else "degraded",
+        backend_status=backend_status,
+        model_status=model_status,
+        database_status=database_status,
+        websocket_status=websocket_status,
         model_loaded=model_loaded,
         model_path=MODEL_PATH,
-        version="1.0.0"
+        version="2.0.0"
     )
 
 

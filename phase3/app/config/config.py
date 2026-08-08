@@ -2,12 +2,24 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-MODEL_PATH = os.path.join(BASE_DIR, "models", "best_model.pkl")
+# Configurable paths with environment variable fallbacks
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./cartpilot.db")
+MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(BASE_DIR, "models", "best_model.pkl"))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 SESSION_FEATURES_PATH = os.path.join(DATA_DIR, "session_features.csv")
 FEATURE_IMPORTANCE_PATH = os.path.join(DATA_DIR, "feature_importance.csv")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 AUDIT_LOG_PATH = os.path.join(LOG_DIR, "audit.log")
+
+# Third-Party API Keys for Safe Demo / Live Delivery
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "+14155238886")
+TWILIO_SMS_NUMBER = os.environ.get("TWILIO_SMS_NUMBER", "+15005550006")
+
+# CORS Origins
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")
 
 # Ensure required directories exist
 os.makedirs(LOG_DIR, exist_ok=True)

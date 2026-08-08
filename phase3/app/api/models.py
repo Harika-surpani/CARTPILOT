@@ -65,18 +65,7 @@ class PredictionResponse(BaseModel):
 
 class RecommendationResponse(BaseModel):
     """
-    Pydantic schema matching the required exact JSON output format for Step 9:
-    {
-      "session_id": "...",
-      "risk_score": 0.91,
-      "purchase_probability": 0.09,
-      "abandonment_probability": 0.91,
-      "confidence": 0.96,
-      "reason": "Browsing Only",
-      "recommended_action": "Send Reminder",
-      "top_features": [...],
-      "timestamp": "..."
-    }
+    Pydantic schema for recommendation & decision pipeline response.
     """
     session_id: str
     risk_score: float
@@ -87,11 +76,23 @@ class RecommendationResponse(BaseModel):
     recommended_action: str
     top_features: List[FeatureExplanationItem]
     timestamp: str
+    final_action: Optional[str] = None
+    discount_cost: Optional[float] = 0.0
+    expected_incremental_margin: Optional[float] = 0.0
+    decision_status: Optional[str] = "APPROVED"
+    experiment_group: Optional[str] = "TREATMENT"
+    consent_status: Optional[str] = "APPROVED"
+    selected_channel: Optional[str] = "WHATSAPP"
+    self_check_passed: Optional[bool] = True
 
 
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str
+    backend_status: str
+    model_status: str
+    database_status: str
+    websocket_status: str
     model_loaded: bool
     model_path: str
     version: str

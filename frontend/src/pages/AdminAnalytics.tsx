@@ -11,6 +11,8 @@ import {
   Cpu
 } from 'lucide-react';
 import { ModelPerformanceStats } from '../types';
+import { ExperimentMetricsView } from '../components/ExperimentMetrics';
+import { AICostCard } from '../components/AICostCard';
 
 export const AdminAnalytics: React.FC = () => {
   const modelStats: ModelPerformanceStats[] = [
@@ -20,7 +22,7 @@ export const AdminAnalytics: React.FC = () => {
   ];
 
   const topFeatures = [
-    { name: 'cart_value', weight: 8.5312, pct: 45.2, desc: 'Cumulative session transaction value ($)' },
+    { name: 'cart_value', weight: 8.5312, pct: 45.2, desc: 'Cumulative session transaction value (₹)' },
     { name: 'avg_time_between_events_sec', weight: 2.1450, pct: 18.5, desc: 'Mean idle time between consecutive actions' },
     { name: 'total_events', weight: 1.8920, pct: 12.1, desc: 'Total clickstream event count' },
     { name: 'product_views', weight: 1.4510, pct: 9.8, desc: 'Count of product detail view interactions' },
@@ -35,15 +37,21 @@ export const AdminAnalytics: React.FC = () => {
       {/* Header */}
       <div className="border-b border-slate-800 pb-6">
         <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-full border border-cyan-500/20">
-          Phase 2 Machine Learning Evaluation
+          Phase 2, 5, 6 & Enterprise Decision Layer Analytics
         </span>
         <h1 className="text-3xl font-extrabold text-white mt-2">
-          Admin Model Analytics & Feature Importance
+          Admin Model Analytics, Holdout Experiments & AI Cost Tracker
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Detailed metrics from model training on 74,817 clickstream events across 10,000 unique sessions (Holdout Test Set N=2,000).
+          Detailed metrics from machine learning inference, business decision guardrails, Phase 6 holdout experiments, and the enterprise multi-agent decision pipeline.
         </p>
       </div>
+
+      {/* PHASE 6 HOLDOUT EXPERIMENT DASHBOARD */}
+      <ExperimentMetricsView />
+
+      {/* AI COST & LATENCY TRACKER */}
+      <AICostCard />
 
       {/* 4 WINNING METRIC STAT CARDS */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 font-mono">

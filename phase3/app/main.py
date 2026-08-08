@@ -7,7 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 # Ensure phase3 root is in sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.config.config import CORS_ORIGINS
 from app.api.endpoints import router as api_router
+from app.api.experiment_routes import router as experiment_router
+from app.api.websocket_routes import router as websocket_router
+from app.api.enterprise_routes import router as enterprise_router
 from app.services.prediction_service import get_prediction_service
 from app.utils.logger import setup_logger
 
@@ -29,24 +33,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CartPilot AI Cart Rescue Engine",
-    description="Real-time E-Commerce Cart Abandonment Risk Prediction & Recommendation Engine",
-    version="1.0.0",
+    description="Real-time E-Commerce Cart Abandonment Risk Prediction, Enterprise Decision Layer & Holdout Experiment Engine",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
 )
 
-# Enable CORS for future frontend integration
+# Enable CORS for frontend integration
+origins = CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include API routes
+# Include API, Experiment, WebSocket & Enterprise Decision Layer routes
 app.include_router(api_router)
+app.include_router(experiment_router)
+app.include_router(websocket_router)
+app.include_router(enterprise_router)
 
 
 if __name__ == "__main__":
